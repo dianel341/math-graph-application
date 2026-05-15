@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>고등수학 그래프 계산기</title>
+
+  <!--
+    ======================================================
+    사용하는 외부 라이브러리 (CDN으로 불러옴)
+    - math.js  : 수식 계산, 미분, 적분 등 수학 연산 담당
+    - Chart.js : 그래프(캔버스) 그리기 담당
+    ======================================================
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.0/math.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+
+  <style>
+    /* ===================== 기본 리셋 ===================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+      color: #222;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    /* ===================== 전체 레이아웃 =====================
+       왼쪽(그래프 + 함수 목록) | 오른쪽(계산기 키패드)
+       두 영역을 나란히 배치 */
+    #app {
+      display: grid;
+      grid-template-columns: 1fr 320px; /* 왼쪽은 유연하게, 오른쪽은 고정 320px */
+      gap: 16px;
+    }
+
+    /* ===================== 왼쪽 영역 ===================== */
+    #left {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 그래프 캔버스 감싸는 박스 */
+    #graph-container {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    /* 실제 그래프가 그려지는 캔버스 */
+    canvas#graph {
+      display: block;
+      width: 100%;
+      height: 340px;
+    }
+
+    /* 축 범위 설정 영역 */
+    #axis-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    #axis-controls label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    #axis-controls input[type="number"] {
+      width: 60px;
+      font-size: 12px;
+      padding: 4px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    /* 함수 목록 (여러 줄 입력 가능) */
+    #func-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* 함수 한 줄 (색상 점 + 입력창 + 삭제 버튼) */
+    .func-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 함수 색상 표시 원 */
+    .color-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+
+    /* 함수 입력 텍스트 박스 */
+    .func-input {
+      flex: 1;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+    }
+
+    .func-input:focus {
+      outline: none;
+      border-color: #378ADD;
+    }
+
+    /* 삭제(×) 버튼 */
+    .remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: #999;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .remove-btn:hover {
+      color: #333;
+    }
+
+    /* 함수 오류 메시지 */
+    .func-err {
+      font-size: 11px;
+      color: #c0392b;
+      padding-left: 30px;
+    }
+
+    /* 함수 추가 버튼 */
+    #add-func-btn {
+      align-self: flex-start;
+      font-size: 12px;
+      padding: 5px 14px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+    }
+
+    #add-func-btn:hover {
+      background: #f0f0f0;
+    }
+
+    /* 계산 결과 표시 박스 */
+    #result-area {
+      background: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-height: 48px;
+    }
+
+    #result-area .res-label {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    #result-area .res-val {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: #222;
+      word-break: break-all;
+    }
+
+    /* ===================== 오른쪽 영역 (키패드) ===================== */
+    #right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* 수식 입력창 */
+    #calc-input {
+      width: 100%;
+      font-size: 15px;
+      font-family: 'Courier New', monospace;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+    }
+
+    #calc-input:focus {
+      outline: none;
+      border-color: #378ADD;
+    }
+
+    /* 키패드 그리드 */
+    .pad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr); /* 4열 균등 분할 */
+      gap: 5px;
+    }
+
+    /* 키패드 버튼 공통 스타일 */
+    .pad button {
+      padding: 8px 4px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      cursor: pointer;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      transition: background 0.1s;
+    }
+
+    .pad button:hover {
+      background: #f0f0f0;
+    }
+
+    .pad button:active {
+      transform: scale(0.95);
+    }
+
+    /* = 버튼 (파란색 강조) */
+    .btn-eq {
+      background: #e8f4fc !important;
+      color: #1a5fa8 !important;
+      border-color: #b3d4f0 !important;
+      font-weight: 600;
+    }
+
+    .btn-eq:hover {
+      background: #cce4f7 !important;
+    }
+
+    /* 지우기 버튼 (빨간색 강조) */
+    .btn-del {
+      background: #fdecea !important;
+      color: #a93226 !important;
+      border-color: #f5c0bb !important;
+    }
+
+    /* 섹션 구분 라벨 */
+    .pad-label {
+      font-size: 11px;
+      color: #888;
+      letter-spacing: 0.04em;
+      margin-top: 4px;
+    }
+
+    /* 그래프에 추가 버튼 */
+    #insert-graph-btn {
+      width: 100%;
+      padding: 7px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid #b3d4f0;
+      border-radius: 6px;
+      background: #e8f4fc;
+      color: #1a5fa8;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    #insert-graph-btn:hover {
+      background: #cce4f7;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>고등수학 그래프 계산기</h1>
+
+  <div id="app">
+
+    <!-- ===== 왼쪽: 그래프 + 함수 입력 + 결과 ===== -->
+    <div id="left">
+
+      <!-- 그래프 -->
+      <div id="graph-container">
+        <canvas id="graph"></canvas>
+      </div>
+
+      <!-- 축 범위 조절 -->
+      <div id="axis-controls">
+        <label>x 최솟값</label>
+        <input type="number" id="xmin" value="-10">
+        <label>x 최댓값</label>
+        <input type="number" id="xmax" value="10">
+        <label>y 최솟값</label>
+        <input type="number" id="ymin" value="-10">
+        <label>y 최댓값</label>
+        <input type="number" id="ymax" value="10">
+        <button onclick="drawAll()">다시 그리기</button>
+      </div>
+
+      <!-- 함수 목록 (JS가 여기에 동적으로 추가함) -->
+      <div id="func-list"></div>
+
+      <!-- 함수 추가 버튼 -->
+      <button id="add-func-btn" onclick="addFunc()">+ 함수 추가</button>
+
+      <!-- 계산 결과 표시 -->
+      <div id="result-area">
+        <div class="res-label">계산 결과</div>
+        <div class="res-val" id="res-val">수식을 입력하고 = 을 누르세요</div>
+      </div>
+
+    </div>
+
+    <!-- ===== 오른쪽: 수식 입력창 + 키패드 ===== -->
+    <div id="right">
+
+      <!-- 수식 입력창 (키패드로만 입력, readonly) -->
+      <input type="text" id="calc-input" placeholder="키패드로 수식 입력..." readonly>
+
+      <!-- 섹션1: 숫자 + 기본 연산 -->
+      <div class="pad-label">숫자 / 연산</div>
+      <div class="pad" id="pad-num"></div>
+
+      <!-- 섹션2: 수학 함수 -->
+      <div class="pad-label">수학 함수</div>
+      <div class="pad" id="pad-fn"></div>
+
+      <!-- 섹션3: 미적분 -->
+      <div class="pad-label">미분 / 적분</div>
+      <div class="pad" id="pad-calc"></div>
+
+      <!-- 그래프에 추가 버튼 -->
+      <button id="insert-graph-btn" onclick="insertToGraph()">그래프에 추가 ↗</button>
+
+    </div>
+  </div>
+
+  <script>
+    // ======================================================
+    // 1. 상수 및 전역 변수
+    // ======================================================
+
+    // 함수마다 순서대로 배정되는 색상 배열
+    const COLORS = [
+      '#378ADD', // 파랑
+      '#D85A30', // 주황
+      '#1D9E75', // 초록
+      '#D4537E', // 분홍
+      '#BA7517', // 황금
+      '#534AB7', // 보라
+      '#639922', // 연두
+      '#E24B4A'  // 빨강
+    ];
+
+    // 현재 등록된 함수들을 저장하는 배열
+    // 각 항목: { expr: "sin(x)", color: "#378ADD", err: "" }
+    let funcs = [];
+
+    // Chart.js 인스턴스 (그래프를 다시 그릴 때 이전 것을 destroy() 하기 위해 저장)
+    let chart = null;
+
+
+    // ======================================================
+    // 2. 함수 목록 관련 함수
+    // ======================================================
+
+    // 함수 추가: 선택적으로 초기 수식(expr)을 받을 수 있음
+    function addFunc(expr) {
+      const idx = funcs.length;
+      const color = COLORS[idx % COLORS.length]; // 색상 순환 배정
+      funcs.push({ expr: expr || '', color: color, err: '' });
+      renderFuncList(); // 화면 다시 그리기
+      if (expr) drawAll(); // 초기 수식이 있으면 바로 그래프 그리기
+    }
+
+    // 함수 삭제
+    function removeFunc(index) {
+      funcs.splice(index, 1); // 배열에서 index번째 항목 제거
+      renderFuncList();
+      drawAll();
+    }
+
+    // 함수 목록을 HTML로 렌더링 (화면 갱신)
+    function renderFuncList() {
+      const container = document.getElementById('func-list');
+      container.innerHTML = ''; // 기존 내용 초기화
+
+      funcs.forEach((f, i) => {
+        // 한 줄(row) div 생성
+        const row = document.createElement('div');
+        row.className = 'func-row';
+
+        row.innerHTML = `
+          <span class="color-dot" style="background:${f.color}"></span>
+          <span style="font-size:12px;color:#666;min-width:28px;">y${i + 1} =</span>
+          <input
+            class="func-input"
+            type="text"
+            value="${f.expr}"
+            placeholder="예: sin(x), x^2, log(x)"
+          >
+          <button class="remove-btn" onclick="removeFunc(${i})">×</button>
+        `;
+
+        container.appendChild(row);
+
+        // 오류 메시지가 있으면 아래에 표시
+        if (f.err) {
+          const errDiv = document.createElement('div');
+          errDiv.className = 'func-err';
+          errDiv.textContent = f.err;
+          container.appendChild(errDiv);
+        }
+
+        // 입력창에 이벤트 연결: 타이핑할 때마다 funcs 배열 업데이트 + 그래프 재렌더링
+        const input = row.querySelector('input');
+        input.addEventListener('input', function () {
+          funcs[i].expr = this.value;
+          drawAll();
+        });
+      });
+    }
+
+
+    // ======================================================
+    // 3. 그래프 그리기
+    // ======================================================
+
+    function drawAll() {
+      // 축 범위 읽기
+      const xmin = parseFloat(document.getElementById('xmin').value) || -10;
+      const xmax = parseFloat(document.getElementById('xmax').value) || 10;
+      const ymin = parseFloat(document.getElementById('ymin').value) || -10;
+      const ymax = parseFloat(document.getElementById('ymax').value) || 10;
+
+      const N = 600;          // x 구간을 600개 점으로 나눔
+      const step = (xmax - xmin) / N;
+
+      // 각 함수를 데이터셋으로 변환
+      const datasets = funcs.map((f, fi) => {
+
+        // 빈 수식이면 건너뜀
+        if (!f.expr.trim()) {
+          funcs[fi].err = '';
+          return null;
+        }
+
+        // 수식 컴파일 시도
+        let compiled;
+        try {
+          compiled = math.compile(f.expr);
+          funcs[fi].err = '';
+        } catch (e) {
+          funcs[fi].err = '수식 오류: ' + e.message.slice(0, 50);
+          return null;
+        }
+
+        // x 값마다 y 계산
+        const points = [];
+        for (let i = 0; i <= N; i++) {
+          const x = xmin + i * step;
+          try {
+            const y = compiled.evaluate({ x: x });
+            // 숫자이고, 유효한 범위 안에 있을 때만 점 추가
+            if (typeof y === 'number' && isFinite(y) && y >= ymin - 1 && y <= ymax + 1) {
+              points.push({ x: parseFloat(x.toFixed(6)), y: parseFloat(y.toFixed(6)) });
+            } else {
+              points.push({ x: parseFloat(x.toFixed(6)), y: null }); // null이면 선 끊김
+            }
+          } catch {
+            points.push({ x: parseFloat(x.toFixed(6)), y: null });
+          }
+        }
+
+        return {
+          label: 'y = ' + f.expr,
+          data: points,
+          borderColor: f.color,
+          borderWidth: 2,
+          pointRadius: 0,   // 점 표시 없음 (선만)
+          fill: false,
+          spanGaps: false,  // null인 구간에서 선 끊기
+          tension: 0        // 직선 보간 (곡선 보간 없음)
+        };
+
+      }).filter(Boolean); // null 항목 제거
+
+      // 함수 목록 화면 갱신 (오류 메시지 반영)
+      renderFuncList();
+
+      // 기존 차트가 있으면 제거 후 새로 생성
+      const ctx = document.getElementById('graph').getContext('2d');
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: datasets },
+        options: {
+          animation: false,     // 애니메이션 끄기 (성능)
+          parsing: false,       // {x, y} 형식 직접 사용
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                font: { size: 11 },
+                boxWidth: 12
+              }
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              callbacks: {
+                label: function (item) {
+                  const y = item.parsed.y;
+                  return item.dataset.label + ': ' + (y !== null ? y.toFixed(4) : '-');
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              min: xmin,
+              max: xmax,
+              grid: { color: 'rgba(0,0,0,0.08)' },
+              ticks: { font: { size: 10 }, maxTicksLimit: 10 }
+            },
+            y: {
+              type: 'linear',
+              min: ymin,
+              max: ymax,
+              grid: { color: 'rgba(0,0,0,0.08)' },
+              ticks: { font: { size: 10 }, maxTicksLimit: 10 }
+            }
+          }
+        }
+      });
+    }
+
+
+    // ======================================================
+    // 4. 계산기 (우측 키패드)
+    // ======================================================
+
+    // 수식 입력창에 텍스트 삽입 (커서 위치에 삽입)
+    function ins(text) {
+      const input = document.getElementById('calc-input');
+      const pos = input.selectionStart || input.value.length;
+      const before = input.value.slice(0, pos);
+      const after = input.value.slice(input.selectionEnd || pos);
+      input.value = before + text + after;
+      // 커서를 삽입된 텍스트 뒤로 이동
+      const newPos = pos + text.length;
+      input.focus();
+      input.setSelectionRange(newPos, newPos);
+    }
+
+    // 마지막 글자 지우기
+    function bksp() {
+      const input = document.getElementById('calc-input');
+      if (input.value.length > 0) {
+        input.value = input.value.slice(0, -1);
+      }
+      input.focus();
+    }
+
+    // 수식 계산 실행 (= 버튼)
+    function calcEval() {
+      const expr = document.getElementById('calc-input').value.trim();
+      const resultEl = document.getElementById('res-val');
+      if (!expr) {
+        resultEl.textContent = '수식을 입력하세요';
+        return;
+      }
+      try {
+        const result = math.evaluate(expr);
+        // 함수가 반환된 경우 (예: derivative 결과)
+        if (typeof result === 'function') {
+          resultEl.textContent = '함수가 정의됨 (그래프에 추가해보세요)';
+          return;
+        }
+        // 숫자 결과 포맷
+        let display;
+        if (typeof result === 'number') {
+          display = Number.isInteger(result) ? result.toString() : result.toFixed(8);
+        } else {
+          display = result.toString();
+        }
+        resultEl.textContent = expr + ' = ' + display;
+      } catch (e) {
+        resultEl.textContent = '오류: ' + e.message.slice(0, 60);
+      }
+    }
+
+    // 계산기 수식을 그래프 함수 목록에 추가
+    function insertToGraph() {
+      const expr = document.getElementById('calc-input').value.trim();
+      if (!expr) return;
+      // "y = " 접두어가 있으면 제거
+      const clean = expr.replace(/^y\s*=\s*/i, '');
+      addFunc(clean);
+      document.getElementById('calc-input').value = '';
+    }
+
+
+    // ======================================================
+    // 5. 키패드 버튼 정의 및 생성
+    // ======================================================
+
+    // 각 배열 항목: [삽입할 텍스트, 버튼에 표시할 라벨]
+
+    // 숫자 + 기본 연산 버튼
+    const numBtns = [
+      ['7', '7'], ['8', '8'], ['9', '9'], ['/', '÷'],
+      ['4', '4'], ['5', '5'], ['6', '6'], ['*', '×'],
+      ['1', '1'], ['2', '2'], ['3', '3'], ['-', '−'],
+      ['0', '0'], ['.', '.'], ['(', '('], ['+', '+'],
+      [')', ')'], ['^', 'xⁿ'], ['pi', 'π'], ['e', 'e'],
+      ['⌫', '⌫'], ['=', '=']
+    ];
+
+    // 수학 함수 버튼
+    const fnBtns = [
+      ['sin(',   'sin'],    ['cos(',   'cos'],    ['tan(',   'tan'],    ['asin(', 'arcsin'],
+      ['acos(',  'arccos'], ['atan(',  'arctan'], ['sqrt(',  '√'],      ['cbrt(', '³√'],
+      ['log(',   'log₁₀'], ['log2(',  'log₂'],   ['ln(',    'ln'],     ['abs(',  '|x|'],
+      ['exp(',   'eˣ'],     ['floor(', 'floor'],  ['ceil(',  'ceil'],   ['round(','round']
+    ];
+
+    // 미분 / 적분 버튼 (span 2열짜리로 만들 예정)
+    const calcBtns = [
+      ['derivative(f(x), x)',    'f\'(x) 미분 틀'],
+      ['derivative(x^2, x)',     'd/dx(x²) 예시'],
+      ['integrate(f(x), x, a, b)', '∫f(x)dx 틀'],
+      ['integrate(x^2, x, 0, 1)',  '∫₀¹x² dx 예시']
+    ];
+
+    // 버튼 생성 함수
+    function buildPad(padId, btnList) {
+      const pad = document.getElementById(padId);
+      btnList.forEach(([value, label]) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+
+        if (value === '=') {
+          btn.className = 'btn-eq';
+          btn.onclick = calcEval;
+        } else if (value === '⌫') {
+          btn.className = 'btn-del';
+          btn.onclick = bksp;
+        } else {
+          btn.onclick = () => ins(value);
+        }
+
+        pad.appendChild(btn);
+      });
+    }
+
+    // 미적분 패드는 버튼이 2열에 걸치도록 따로 생성
+    function buildCalcPad() {
+      const pad = document.getElementById('pad-calc');
+      calcBtns.forEach(([value, label]) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.gridColumn = 'span 2'; // 2칸 차지
+        btn.style.fontSize = '11px';
+        btn.onclick = () => ins(value);
+        pad.appendChild(btn);
+      });
+    }
+
+    // 패드 실제 생성
+    buildPad('pad-num', numBtns);
+    buildPad('pad-fn', fnBtns);
+    buildCalcPad();
+
+
+    // ======================================================
+    // 6. 초기 실행: 페이지 로드 시 예시 함수 2개 추가
+    // ======================================================
+    addFunc('sin(x)');
+    addFunc('x^2');
+
+  </script>
+</body>
+</html>
